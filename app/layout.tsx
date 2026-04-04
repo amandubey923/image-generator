@@ -27,18 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body>
-        <ClerkProvider appearance={clerkModalAppearance}>
-          <header>
-            <Show when="signed-out">
-              <SignInButton mode="modal"/>
-              <SignUpButton mode="modal"/>
-            </Show>
-            <Show when="signed-in">
-              <UserButton />
-            </Show>
-          </header>
-          {children}
-        </ClerkProvider>
+        <ClerkProvider appearance={clerkModalAppearance}>{children}</ClerkProvider>
       </body>
     </html>
   );

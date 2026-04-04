@@ -1,4 +1,4 @@
-import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
+import { Show, SignUpButton, UserButton } from "@clerk/nextjs";
 import { ChevronDownIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -61,19 +61,6 @@ export function HomeHeroSection() {
           </div>
 
           <div className="home-nav-auth">
-            <Show when="signed-out">
-              <SignInButton mode="modal" fallbackRedirectUrl="/studio">
-                <Button type="button" variant="outline" size="sm" className="home-btn-signin">
-                  Sign In
-                </Button>
-              </SignInButton>
-              <SignUpButton mode="modal" fallbackRedirectUrl="/studio">
-                <Button type="button" className="home-btn-nav-primary">
-                  Get Started
-                </Button>
-              </SignUpButton>
-            </Show>
-
             <Show when="signed-in">
               <Button variant="outline" asChild className="home-btn-studio-outline">
                 <Link href="/studio" prefetch={false}>
