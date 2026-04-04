@@ -223,7 +223,7 @@ function useStudioWorkbenchValue({
 
       setResult(resultPayload);
       setHistory((current) => [g, ...current.filter((item) => item.id !== g.id)]);
-      setQuota((prev) => ({
+      setQuota((prev: GenerationQuotaSnapshot) => ({
         limit: prev.limit,
         used: prev.used + 1,
         remaining: Math.max(0, prev.remaining - 1),
