@@ -4,7 +4,7 @@ import { CircleDotIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import { useStudioWorkbench } from "@/context/StudioWorkbenchContext";
-import { HistoryCard, PreviewFrame, ResultPreviewFrame } from "./workbench-ui";
+import { HistoryCard, PreviewFrame, ResultPreviewFrame } from "@/components/studio/workbench-ui";
 
 export function StudioPreviewPanel() {
   const { history, isLoading, openHistoryPreview, resultPreview, selectedPreset, sourcePreview } =
