@@ -27,8 +27,10 @@ export function Footer() {
             <Show when="signed-out">
               <SignUpButton mode="modal" fallbackRedirectUrl="/studio">
                 <Button type="button" className="gap-2 rounded-full px-5 py-3">
-                  Start in Studio
-                  <ArrowUpRightIcon className="size-4" />
+                  <span className="inline-flex items-center gap-2">
+                    Start in Studio
+                    <ArrowUpRightIcon className="size-4" />
+                  </span>
                 </Button>
               </SignUpButton>
             </Show>

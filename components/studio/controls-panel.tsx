@@ -14,7 +14,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { useStudioWorkbench } from "@/context/StudioWorkbenchContext";
-import { GenerateButton, StylePresetCard } from "./workbench-ui";
+import { GenerateButton, StylePresetCard } from "@/components/studio/workbench-ui";
 
 export function StudioControlsPanel() {
   const {
