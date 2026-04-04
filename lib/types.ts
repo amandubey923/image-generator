@@ -1,3 +1,5 @@
+import type { OpenAiImageModel } from "@/lib/openai-image-models";
+
 export type GenerationQuotaSnapshot = {
   limit: number;
   used: number;
@@ -6,16 +8,37 @@ export type GenerationQuotaSnapshot = {
 
 export type GenerationHistorySummaryItem = {
   id: string;
-  resultImageUrl: string;
-  styleLabel: string;
-  styleSlug: string;
-  model: string;
-  createdAt: string;
+  clerkUserId: string;
   originalFileName: string | null;
+  sourceImageUrl: string;
+  resultImageUrl: string;
+  styleSlug: string;
+  styleLabel: string;
+  model: string;
+  promptUsed: string;
+  createdAt: Date | string;
+};
+
+export type GenerationResult = {
+  imageBase64: string;
+  mimeType: string;
+  model: OpenAiImageModel;
+  savedGeneration: GenerationHistorySummaryItem;
+  style: {
+    slug: string;
+    label: string;
+  };
+  promptUsed: string;
 };
 
 export type StudioWorkbenchProps = {
   clerkUserId: string;
   initialHistory: GenerationHistorySummaryItem[];
   initialQuota: GenerationQuotaSnapshot;
+};
+
+export type UploadedSource = {
+  imageUrl: string;
+  originalFileName: string;
+  sourceMimeType: string;
 };

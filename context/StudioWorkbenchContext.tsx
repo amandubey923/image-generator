@@ -1,24 +1,25 @@
 "use client";
 
 import {
+  type PropsWithChildren,
+  type SubmitEvent,
   createContext,
-  useCallback,
   useContext,
   useEffect,
-  useMemo,
-  useRef,
   useState,
-  useId,
-  type FormEvent,
-  type ReactNode,
 } from "react";
+import { upload } from "@imagekit/next";
+import * as Sentry from "@sentry/nextjs";
 
+import type { GenerationQuotaSnapshot } from "@/lib/generation-quota";
+import { openAiImageModels, type OpenAiImageModel } from "@/lib/openai-image-models";
+import { stylePresets, type StylePreset } from "@/lib/style-presets";
 import {
-  openAiImageModels,
-  type OpenAiImageModel,
-} from "@/lib/openai-image-models";
-import { stylePresets } from "@/lib/style-presets";
-import type { GenerationHistorySummaryItem, GenerationQuotaSnapshot } from "@/lib/types";
+  GenerationHistorySummaryItem,
+  GenerationResult,
+  StudioWorkbenchProps,
+  UploadedSource,
+} from "@/lib/types";
 
 type StudioWorkbenchContextValue = {
   error: string | null;
@@ -28,169 +29,232 @@ type StudioWorkbenchContextValue = {
   isGenerateDisabled: boolean;
   isLoading: boolean;
   quota: GenerationQuotaSnapshot;
-  replaceFile: (nextFile: File | null) => void;
   resultPreview: string | null;
   selectedModel: OpenAiImageModel;
-  selectedPreset: (typeof stylePresets)[number];
+  selectedPreset: StylePreset;
   selectedStyle: string;
-  selectModel: (model: OpenAiImageModel) => void;
-  selectStyle: (slug: string) => void;
   sourcePreview: string | null;
-  handleSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   viewedHistoryItem: GenerationHistorySummaryItem | null;
-  openHistoryPreview: (item: GenerationHistorySummaryItem) => void;
   closeHistoryPreview: () => void;
+  handleSubmit: (event: SubmitEvent<HTMLFormElement>) => Promise<void>;
+  openHistoryPreview: (item: GenerationHistorySummaryItem) => void;
+  replaceFile: (nextFile: File | null) => void;
+  selectModel: (model: OpenAiImageModel) => void;
+  selectStyle: (styleSlug: string) => void;
 };
 
 const StudioWorkbenchContext = createContext<StudioWorkbenchContextValue | null>(null);
 
+const uploadInputId = "studio-image-upload";
+
+async function getImageKitAuthParams() {
+  const response = await fetch("/api/upload");
+
+  if (!response.ok) {
+    throw new Error("Failed to get upload credentials.");
+  }
+
+  const data = (await response.json()) as {
+    token: string;
+    expire: number;
+    signature: string;
+    publicKey: string;
+  };
+
+  return data;
+}
+
 export function StudioWorkbenchProvider({
   children,
+  clerkUserId,
   initialHistory,
   initialQuota,
-}: {
-  children: ReactNode;
-  clerkUserId: string;
-  initialHistory: GenerationHistorySummaryItem[];
-  initialQuota: GenerationQuotaSnapshot;
-}) {
-  const inputId = useId();
-  const [history, setHistory] = useState(initialHistory);
-  const [quota, setQuota] = useState(initialQuota);
-  const [error, setError] = useState<string | null>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<OpenAiImageModel>(openAiImageModels[0]);
+}: PropsWithChildren<StudioWorkbenchProps>) {
+  const value = useStudioWorkbenchValue({ clerkUserId, initialHistory, initialQuota });
+
+  return (
+    <StudioWorkbenchContext.Provider value={value}>{children}</StudioWorkbenchContext.Provider>
+  );
+}
+
+export function useStudioWorkbench() {
+  const value = useContext(StudioWorkbenchContext);
+
+  if (!value) {
+    throw new Error("useStudioWorkbench must be used within StudioWorkbenchProvider.");
+  }
+
+  return value;
+}
+
+function useStudioWorkbenchValue({
+  clerkUserId,
+  initialHistory,
+  initialQuota,
+}: StudioWorkbenchProps): StudioWorkbenchContextValue {
   const [selectedStyle, setSelectedStyle] = useState(stylePresets[0]?.slug ?? "");
-  const [resultPreview, setResultPreview] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<OpenAiImageModel>(openAiImageModels[0]);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploadedSource, setUploadedSource] = useState<UploadedSource | null>(null);
   const [sourcePreview, setSourcePreview] = useState<string | null>(null);
-  const [viewedHistoryItem, setViewedHistoryItem] = useState<GenerationHistorySummaryItem | null>(null);
-  const sourcePreviewRef = useRef<string | null>(null);
+  const [result, setResult] = useState<GenerationResult | null>(null);
+  const [history, setHistory] = useState(initialHistory);
+  const [viewedHistoryItem, setViewedHistoryItem] = useState<GenerationHistorySummaryItem | null>(
+    null,
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [quota, setQuota] = useState<GenerationQuotaSnapshot>(initialQuota);
 
-  const selectedPreset =
-    stylePresets.find((preset) => preset.slug === selectedStyle) ?? stylePresets[0];
-
-  const replaceFile = useCallback((nextFile: File | null) => {
-    if (sourcePreviewRef.current) {
-      URL.revokeObjectURL(sourcePreviewRef.current);
-      sourcePreviewRef.current = null;
-    }
-
-    setFile(nextFile);
-    setError(null);
-
-    if (!nextFile) {
+  // this will create a preview of the image when the file is uploaded
+  useEffect(() => {
+    if (!file) {
       setSourcePreview(null);
       return;
     }
 
-    const nextPreviewUrl = URL.createObjectURL(nextFile);
-    sourcePreviewRef.current = nextPreviewUrl;
-    setSourcePreview(nextPreviewUrl);
-  }, []);
+    const objectUrl = URL.createObjectURL(file);
+    setSourcePreview(objectUrl);
 
-  useEffect(() => {
-    return () => {
-      if (sourcePreviewRef.current) {
-        URL.revokeObjectURL(sourcePreviewRef.current);
-      }
-    };
-  }, []);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
 
-  const handleSubmit = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
+  const resultPreview = result ? `data:${result.mimeType};base64,${result.imageBase64}` : null;
+  const selectedPreset =
+    stylePresets.find((preset) => preset.slug === selectedStyle) ?? stylePresets[0];
+  const isGenerateDisabled = isLoading || !file || quota.remaining <= 0;
 
-      if (!file) {
-        setError("Please upload an image first.");
-        return;
-      }
-
-      if (quota.remaining <= 0) {
-        setError("You have reached your monthly generation limit.");
-        return;
-      }
-
-      setError(null);
-      setIsLoading(true);
-
-      await new Promise((resolve) => setTimeout(resolve, 700));
-
-      const resultImageUrl = sourcePreview ?? selectedPreset.thumbnailPath;
-      const nextItem: GenerationHistorySummaryItem = {
-        id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : String(Date.now()),
-        createdAt: new Date().toISOString(),
-        model: selectedModel,
-        originalFileName: file.name,
-        resultImageUrl,
-        styleLabel: selectedPreset.label,
-        styleSlug: selectedPreset.slug,
-      };
-
-      setResultPreview(resultImageUrl);
-      setHistory((prev) => [nextItem, ...prev]);
-      setQuota((prev) => {
-        const used = Math.min(prev.limit, prev.used + 1);
-        return {
-          ...prev,
-          used,
-          remaining: Math.max(0, prev.limit - used),
-        };
-      });
-      setIsLoading(false);
-    },
-    [file, quota.remaining, selectedModel, selectedPreset, sourcePreview],
-  );
-
-  const value = useMemo<StudioWorkbenchContextValue>(
-    () => ({
-      closeHistoryPreview: () => setViewedHistoryItem(null),
-      error,
-      file,
-      handleSubmit,
-      history,
-      inputId,
-      isGenerateDisabled: !file || isLoading || quota.remaining <= 0,
-      isLoading,
-      openHistoryPreview: (item) => setViewedHistoryItem(item),
-      quota,
-      replaceFile,
-      resultPreview,
-      selectedModel,
-      selectedPreset,
-      selectedStyle,
-      selectModel: setSelectedModel,
-      selectStyle: setSelectedStyle,
-      sourcePreview,
-      viewedHistoryItem,
-    }),
-    [
-      error,
-      file,
-      handleSubmit,
-      history,
-      inputId,
-      isLoading,
-      quota,
-      replaceFile,
-      resultPreview,
-      selectedModel,
-      selectedPreset,
-      selectedStyle,
-      sourcePreview,
-      viewedHistoryItem,
-    ],
-  );
-
-  return <StudioWorkbenchContext.Provider value={value}>{children}</StudioWorkbenchContext.Provider>;
-}
-
-export function useStudioWorkbench() {
-  const contextValue = useContext(StudioWorkbenchContext);
-
-  if (!contextValue) {
-    throw new Error("useStudioWorkbench must be used within StudioWorkbenchProvider");
+  function resetGenerationState() {
+    setResult(null);
+    setError(null);
   }
 
-  return contextValue;
+  function replaceFile(nextFile: File | null) {
+    setFile(nextFile);
+    setUploadedSource(null);
+    resetGenerationState();
+  }
+
+  function openHistoryPreview(item: GenerationHistorySummaryItem) {
+    setViewedHistoryItem(item);
+    setError(null);
+  }
+
+  function closeHistoryPreview() {
+    setViewedHistoryItem(null);
+  }
+
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!file) {
+      setError("Please upload an image first.");
+      return;
+    }
+
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      let nextUploadedSource = uploadedSource;
+
+      if (!nextUploadedSource) {
+        const authParams = await getImageKitAuthParams();
+
+        const uploadResult = await upload({
+          file,
+          fileName: file.name,
+          folder: `/users/${clerkUserId}/uploads`,
+          signature: authParams.signature,
+          token: authParams.token,
+          expire: authParams.expire,
+          publicKey: authParams.publicKey,
+        });
+
+        if (!uploadResult.url) {
+          throw new Error("Upload did not return a URL.");
+        }
+
+        nextUploadedSource = {
+          imageUrl: uploadResult.url,
+          originalFileName: file.name,
+          sourceMimeType: file.type,
+        };
+
+        setUploadedSource(nextUploadedSource);
+      }
+
+      const response = await fetch("/api/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceImageUrl: nextUploadedSource.imageUrl,
+          sourceMimeType: nextUploadedSource.sourceMimeType,
+          originalFileName: nextUploadedSource.originalFileName,
+          styleSlug: selectedStyle,
+          model: selectedModel,
+        }),
+      });
+
+      const payload = (await response.json()) as GenerationResult;
+
+      if (!response.ok) {
+        setResult(null);
+        const err = (payload as { error?: string }).error;
+        setError(typeof err === "string" ? err : "Generation failed.");
+        const p = payload as { limit?: number; used?: number };
+        if (typeof p.limit === "number" && typeof p.used === "number") {
+          setQuota({
+            limit: p.limit,
+            used: p.used,
+            remaining: Math.max(0, p.limit - p.used),
+          });
+        }
+        return;
+      }
+
+      const resultPayload = payload as GenerationResult;
+      const g = resultPayload.savedGeneration;
+
+      Sentry.logger.info("studio.generation_succeeded", {
+        styleSlug: g.styleSlug,
+        model: g.model,
+      });
+
+      setResult(resultPayload);
+      setHistory((current) => [g, ...current.filter((item) => item.id !== g.id)]);
+      setQuota((prev) => ({
+        limit: prev.limit,
+        used: prev.used + 1,
+        remaining: Math.max(0, prev.remaining - 1),
+      }));
+    } catch {
+      setResult(null);
+      setError("Something went wrong while generating the image.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return {
+    closeHistoryPreview,
+    error,
+    file,
+    handleSubmit,
+    history,
+    inputId: uploadInputId,
+    isGenerateDisabled,
+    isLoading,
+    openHistoryPreview,
+    quota,
+    replaceFile,
+    resultPreview,
+    selectedModel,
+    selectedPreset,
+    selectedStyle,
+    selectModel: setSelectedModel,
+    selectStyle: setSelectedStyle,
+    sourcePreview,
+    viewedHistoryItem,
+  };
 }
