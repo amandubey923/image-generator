@@ -26,7 +26,7 @@ async function StudioPage() {
           <Link href="/" className="flex min-w-0 items-center gap-3">
             <span className="relative mr-2 flex h-10 w-10 shrink-0 items-center justify-center overflow-visible">
               <Image
-                src="/logo3.png"
+                src="/logo.png"
                 alt="Luma Studio"
                 width={72}
                 height={72}

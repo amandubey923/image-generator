@@ -1,10 +1,5 @@
+import type { GenerationQuotaSnapshot } from "@/lib/generation-quota";
 import type { OpenAiImageModel } from "@/lib/openai-image-models";
-
-export type GenerationQuotaSnapshot = {
-  limit: number;
-  used: number;
-  remaining: number;
-};
 
 export type GenerationHistorySummaryItem = {
   id: string;
