@@ -11,18 +11,18 @@ export type GenerationQuotaSnapshot = {
 export const BILLING_PLAN_KEYS = {
   free: "free",
   pro: "pro",
-  studio: "studio",
+  proMax: "pro-max",
 } as const;
 
 export const MONTHLY_GENERATION_LIMITS = {
   free: 3,
   pro: 75,
-  studio: 175,
+  proMax: 175,
 } as const;
 
 export function getMonthlyGenerationLimit(has: SessionAuthObject["has"]): number {
-  if (has({ plan: BILLING_PLAN_KEYS.studio })) {
-    return MONTHLY_GENERATION_LIMITS.studio;
+  if (has({ plan: BILLING_PLAN_KEYS.proMax })) {
+    return MONTHLY_GENERATION_LIMITS.proMax;
   }
   if (has({ plan: BILLING_PLAN_KEYS.pro })) {
     return MONTHLY_GENERATION_LIMITS.pro;
